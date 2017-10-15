@@ -148,7 +148,7 @@ module Isuda
       JSON.generate(result: 'ok')
     end
 
-    def cache_link(entry)
+    def link_cache(entry)
       content = entry[:description]
       if settings.html_by_entry_id[entry[:id].to_s]
         return settings.html_by_entry_id[entry[:id].to_s]
@@ -274,7 +274,7 @@ module Isuda
       keyword = params[:keyword] or halt(400)
 
       entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
-      cache = cache_link(entry)
+      cache = link_cache(entry)
       if cache.nil?
         keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
         pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
