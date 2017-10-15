@@ -141,8 +141,7 @@ module Isuda
       keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
       pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
       entries.each do |entry|
-        entry[:html] = cache_link(entry, pattern)
-        entry[:stars] = load_stars(entry[:keyword])
+        cache_link(entry, pattern)
       end
 
       content_type :json
