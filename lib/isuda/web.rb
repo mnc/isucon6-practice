@@ -148,6 +148,15 @@ module Isuda
       JSON.generate(result: 'ok')
     end
 
+    def cache_link(entry)
+      content = entry[:description]
+      if settings.html_by_entry_id[entry[:id].to_s]
+        return settings.html_by_entry_id[entry[:id].to_s]
+      else
+        return nil
+      end
+    end
+
     def cache_link(entry, pattern)
       content = entry[:description]
       return settings.html_by_entry_id[entry[:id].to_s] if settings.html_by_entry_id[entry[:id].to_s]
@@ -265,10 +274,15 @@ module Isuda
       keyword = params[:keyword] or halt(400)
 
       entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
-      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+      cache = cache_link(entry)
+      if cache.nil?
+        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+        entry[:html] = cache_link(entry, pattern)
+      else
+        entry[:html] = cache
+      end
       entry[:stars] = load_stars(entry[:keyword])
-      entry[:html] = cache_link(entry, pattern)
 
       locals = {
         entry: entry,
