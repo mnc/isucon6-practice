@@ -23,6 +23,7 @@ module Isuda
     set :session_secret, 'tonymoris'
     set :isupam_origin, ENV['ISUPAM_ORIGIN'] || 'http://localhost:5050'
     set :isutar_origin, ENV['ISUTAR_ORIGIN'] || 'http://localhost:5001'
+    set :html_by_entry_id, {}
 
     configure :development do
       require 'sinatra/reloader'
@@ -132,8 +133,41 @@ module Isuda
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
 
+
+      entries = db.xquery(%|
+        SELECT * FROM entry
+        ORDER BY updated_at DESC
+        LIMIT;|)
+      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+      entries.each do |entry|
+        entry[:html] = cache_link(entry, pattern)
+        entry[:stars] = load_stars(entry[:keyword])
+      end
+
       content_type :json
       JSON.generate(result: 'ok')
+    end
+
+    def cache_link(entry, pattern)
+      content = entry[:description]
+      return html_by_entry_id[entry.id] if html_by_entry_id[entry.id]
+      kw2hash = {}
+      hashed_content = content.gsub(/(#{pattern})/) {|m|
+        matched_keyword = $1
+        "isuda_#{Digest::SHA1.hexdigest(matched_keyword)}".tap do |hash|
+          kw2hash[matched_keyword] = hash
+        end
+      }
+      escaped_content = Rack::Utils.escape_html(hashed_content)
+      kw2hash.each do |(keyword, hash)|
+        keyword_url = url("/keyword/#{Rack::Utils.escape_path(keyword)}")
+        anchor = '<a href="%s">%s</a>' % [keyword_url, Rack::Utils.escape_html(keyword)]
+        escaped_content.gsub!(hash, anchor)
+      end
+      generated_html = escaped_content.gsub(/\n/, "<br />\n")
+      html_by_entry_id[entry.id] = generated_html
+      generated_html
     end
 
     get '/', set_name: true do
@@ -235,7 +269,7 @@ module Isuda
       keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
       pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
       entry[:stars] = load_stars(entry[:keyword])
-      entry[:html] = htmlify(entry[:description], pattern)
+      entry[:html] = cache_link(entry, pattern)
 
       locals = {
         entry: entry,
