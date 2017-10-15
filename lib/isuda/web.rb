@@ -27,6 +27,7 @@ module Isuda
     set :isutar_origin, ENV['ISUTAR_ORIGIN'] || 'http://localhost:5001'
     set :html_by_entry_id, {}
     set :logger, Logger.new('sinatra.log')
+    set :already, false
 
     configure :development do
       require 'sinatra/reloader'
@@ -136,17 +137,6 @@ module Isuda
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
 
-
-      entries = db.xquery(%|
-        SELECT * FROM entry
-        ORDER BY updated_at DESC
-        LIMIT;|)
-      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
-      entries.each do |entry|
-        cache_link(entry, pattern)
-      end
-
       content_type :json
       JSON.generate(result: 'ok')
     end
@@ -185,6 +175,18 @@ module Isuda
     get '/', set_name: true do
       per_page = 10
       page = (params[:page] || 1).to_i
+
+      unless settings.already
+        entries = db.xquery(%|
+          SELECT * FROM entry
+          ORDER BY updated_at DESC
+          LIMIT;|)
+        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+        entries.each do |entry|
+          cache_link(entry, pattern)
+        end
+      end
 
       entries = db.xquery(%|
         SELECT * FROM entry
@@ -276,6 +278,17 @@ module Isuda
 
     get '/keyword/:keyword', set_name: true do
       keyword = params[:keyword] or halt(400)
+      unless settings.already
+        entries = db.xquery(%|
+          SELECT * FROM entry
+          ORDER BY updated_at DESC
+          LIMIT;|)
+        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+        entries.each do |entry|
+          cache_link(entry, pattern)
+        end
+      end
 
       entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
       cache = link_cache(entry)
