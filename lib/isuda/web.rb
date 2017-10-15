@@ -286,6 +286,16 @@ module Isuda
 
       db.xquery(%| DELETE FROM entry WHERE keyword = ? |, keyword)
 
+      entries = db.xquery(%|
+        SELECT * FROM entry
+        ORDER BY updated_at DESC
+        LIMIT;|)
+      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+      entries.each do |entry|
+        cache_link(entry, pattern)
+      end
+
       redirect_found '/'
     end
   end
