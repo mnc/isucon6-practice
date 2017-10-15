@@ -9,6 +9,8 @@ require 'mysql2-cs-bind'
 require 'rack/utils'
 require 'sinatra/base'
 require 'tilt/erubis'
+require 'logger'
+
 
 module Isuda
   class Web < ::Sinatra::Base
@@ -24,6 +26,7 @@ module Isuda
     set :isupam_origin, ENV['ISUPAM_ORIGIN'] || 'http://localhost:5050'
     set :isutar_origin, ENV['ISUTAR_ORIGIN'] || 'http://localhost:5001'
     set :html_by_entry_id, {}
+    set :logger, Logger.new('sinatra.log')
 
     configure :development do
       require 'sinatra/reloader'
@@ -160,6 +163,7 @@ module Isuda
     def cache_link(entry, pattern)
       content = entry[:description]
       return settings.html_by_entry_id[entry[:id].to_s] if settings.html_by_entry_id[entry[:id].to_s]
+      settings.logger.info("----------------------------")
       kw2hash = {}
       hashed_content = content.gsub(/(#{pattern})/) {|m|
         matched_keyword = $1
