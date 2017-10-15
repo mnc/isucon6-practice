@@ -177,6 +177,7 @@ module Isuda
       page = (params[:page] || 1).to_i
 
       unless settings.already
+        settings.already = true
         entries = db.xquery(%|
           SELECT * FROM entry
           ORDER BY updated_at DESC
@@ -279,6 +280,7 @@ module Isuda
     get '/keyword/:keyword', set_name: true do
       keyword = params[:keyword] or halt(400)
       unless settings.already
+        settings.already = true
         entries = db.xquery(%|
           SELECT * FROM entry
           ORDER BY updated_at DESC
