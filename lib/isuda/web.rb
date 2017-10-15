@@ -150,7 +150,7 @@ module Isuda
 
     def cache_link(entry, pattern)
       content = entry[:description]
-      return settings.html_by_entry_id[entry.id] if settings.html_by_entry_id[entry.id]
+      return settings.html_by_entry_id[entry.id.to_s] if settings.html_by_entry_id[entry.id.to_s]
       kw2hash = {}
       hashed_content = content.gsub(/(#{pattern})/) {|m|
         matched_keyword = $1
@@ -165,7 +165,7 @@ module Isuda
         escaped_content.gsub!(hash, anchor)
       end
       generated_html = escaped_content.gsub(/\n/, "<br />\n")
-      settings.html_by_entry_id[entry.id] = generated_html
+      settings.html_by_entry_id[entry.id.to_s] = generated_html
       generated_html
     end
 
