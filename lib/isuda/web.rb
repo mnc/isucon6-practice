@@ -10,7 +10,7 @@ require 'rack/utils'
 require 'sinatra/base'
 require 'tilt/erubis'
 require 'logger'
-
+require 'dalli'
 
 module Isuda
   class Web < ::Sinatra::Base
@@ -28,6 +28,7 @@ module Isuda
     set :html_by_entry_id, {}
     set :logger, Logger.new('sinatra.log')
     set :already, false
+    set :dalli, Dalli::Client.new('localhost:11211')
 
     configure :development do
       require 'sinatra/reloader'
@@ -136,15 +137,28 @@ module Isuda
       isutar_initialize_url = URI(settings.isutar_origin)
       isutar_initialize_url.path = '/initialize'
       Net::HTTP.get_response(isutar_initialize_url)
+      refresh_cache
 
       content_type :json
       JSON.generate(result: 'ok')
     end
 
+    def refresh_cache
+      entries = db.xquery(%|
+        SELECT * FROM entry
+        ORDER BY updated_at DESC
+        LIMIT;|)
+      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
+      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
+      entries.each do |entry|
+        cache_link(entry, pattern)
+      end
+    end
+
     def link_cache(entry)
-      content = entry[:description]
-      if settings.html_by_entry_id[entry[:id].to_s]
-        return settings.html_by_entry_id[entry[:id].to_s]
+      cache = settings.dalli.get("#{entry[:id]}")
+      if cache
+        return cache
       else
         return nil
       end
@@ -152,7 +166,8 @@ module Isuda
 
     def cache_link(entry, pattern)
       content = entry[:description]
-      return settings.html_by_entry_id[entry[:id].to_s] if settings.html_by_entry_id[entry[:id].to_s]
+      cache = settings.dalli.get("#{entry[:id]}")
+      return cache if cache
       settings.logger.info("----------------------------")
       kw2hash = {}
       hashed_content = content.gsub(/(#{pattern})/) {|m|
@@ -168,26 +183,13 @@ module Isuda
         escaped_content.gsub!(hash, anchor)
       end
       generated_html = escaped_content.gsub(/\n/, "<br />\n")
-      settings.html_by_entry_id[entry[:id].to_s] = generated_html
+      settings.dalli.set("#{entry[:id]}") = generated_html
       generated_html
     end
 
     get '/', set_name: true do
       per_page = 10
       page = (params[:page] || 1).to_i
-
-      unless settings.already
-        settings.already = true
-        entries = db.xquery(%|
-          SELECT * FROM entry
-          ORDER BY updated_at DESC
-          LIMIT;|)
-        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
-        entries.each do |entry|
-          cache_link(entry, pattern)
-        end
-      end
 
       entries = db.xquery(%|
         SELECT * FROM entry
@@ -274,23 +276,13 @@ module Isuda
         author_id = ?, keyword = ?, description = ?, updated_at = NOW()
       |, *bound)
 
+      refresh_cache
+
       redirect_found '/'
     end
 
     get '/keyword/:keyword', set_name: true do
       keyword = params[:keyword] or halt(400)
-      unless settings.already
-        settings.already = true
-        entries = db.xquery(%|
-          SELECT * FROM entry
-          ORDER BY updated_at DESC
-          LIMIT;|)
-        keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-        pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
-        entries.each do |entry|
-          cache_link(entry, pattern)
-        end
-      end
 
       entry = db.xquery(%| select * from entry where keyword = ? |, keyword).first or halt(404)
       cache = link_cache(entry)
@@ -318,16 +310,7 @@ module Isuda
       end
 
       db.xquery(%| DELETE FROM entry WHERE keyword = ? |, keyword)
-
-      entries = db.xquery(%|
-        SELECT * FROM entry
-        ORDER BY updated_at DESC
-        LIMIT;|)
-      keywords = db.xquery(%| select keyword from entry order by character_length(keyword) desc |)
-      pattern = keywords.map {|k| Regexp.escape(k[:keyword]) }.join('|')
-      entries.each do |entry|
-        cache_link(entry, pattern)
-      end
+      refresh_cache
 
       redirect_found '/'
     end
